@@ -8,6 +8,10 @@ VVP_POST=-fst
 # Look up .PHONY rules for Makefiles
 .PHONY: clean submission
 
+test_add: add32.sv test_add.sv
+	${IVERILOG} $^ -o test_add.bin && ${VVP} test_add.bin ${VVP_POST}
+test_mux: mux32.sv mux2.sv test_mux.sv
+	${IVERILOG} $^ -o test_mux.bin && ${VVP} test_mux.bin ${VVP_POST}
 test_practice : practice.sv test_practice.sv
 	${IVERILOG} $^ -o test_practice.bin && ${VVP} test_practice.bin ${VVP_POST}
 waves_practice : test_practice
