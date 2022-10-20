@@ -1,3 +1,5 @@
+### Teammates: Mari Kang, HK Rho
+
 # Conway's Game of Life
 In this lab you will implement a version of [Conway's Game of Life](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life).
 
