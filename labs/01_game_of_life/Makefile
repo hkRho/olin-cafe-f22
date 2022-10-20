@@ -21,7 +21,7 @@ test_adder_1: tests/test_adder_1.sv hdl/adder_1.sv
 test_decoder_1_2: tests/test_decoder_1_2.sv ${DECODER_SRCS}
 	${IVERILOG} $^ -o test_decoder_1_2.bin && ${VVP} test_decoder_1_2.bin ${VVP_POST}
 
-test_decoder_2_4: tests/test_decoder_2_4.sv ${DECODER_SRCS}
+test_decoder_2_4: tests/test_decoder_2_4.sv hdl/*.sv
 	${IVERILOG} $^ -o test_decoder_2_4.bin && ${VVP} test_decoder_2_4.bin ${VVP_POST}
 
 test_decoders: tests/test_decoders.sv ${DECODER_SRCS}
@@ -64,4 +64,4 @@ clean:
 
 # Call this to generate your submission zip file.
 submission:
-	zip submission.zip Makefile *.sv README.md docs/* *.tcl *.xdc *.fst
+	zip submission.zip Makefile hdl/*.sv tests/*.sv README.md docs/* *.tcl *.xdc
