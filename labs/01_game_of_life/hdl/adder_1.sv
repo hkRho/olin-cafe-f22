@@ -11,7 +11,7 @@ input wire a, b, c_in;
 output logic sum, c_out;
 
 always_comb begin
-  sum = ~a & ~b & c_in | ~a & b & ~c_in | a & ~b & ~c_in | a & b & c_in;
-  c_out = ~a & b & c_in | a & ~b & c_in | a & b & ~c_in | a & b & c_in;
+  sum = a ^ b ^ c_in;
+  c_out = (a & b ) | (a & c_in) | (b & c_in);
 end
 endmodule

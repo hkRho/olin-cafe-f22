@@ -28,7 +28,7 @@ module main(clk, buttons, leds, rgb, cols, rows);
 //Module I/O and parameters
 parameter game_divider = 23; // A clock divider parameter - 12 MHz / 2^23 is about 1 Hz (human visible speed).
 parameter display_divider = 12; // 12 to 17 are good values. Need to PWM the LEDs faster than the game clock.
-parameter N = 8; // Size of the grid. Change this to 5 if you only built a 5x5 array!
+parameter N = 5; // Size of the grid. Change this to 5 if you only built a 5x5 array!
 parameter M = N + 2; // Size of the grid, plus a border all around (makes wiring way easier).
 // Parameter checks.
 initial if (N < 3) $error("N has to be >= 3 to make for interesting patterns.");
@@ -60,8 +60,8 @@ logic [N*N-1:0] cells_0; // to make wiring the led driver easier.
 // its HDL. If you are worried about that, make a simple change to this block
 // to make sure that the FPGA is updating!
 always_comb begin : io_logic 
-    leds[0] = buttons[0] ^ buttons[1];
-    leds[1] = buttons[0] & buttons[1];
+    leds[0] = buttons[0] & buttons[1];
+    leds[1] = buttons[0] ^ buttons[1];
     
     rgb[0] = ~( buttons[0] & ~buttons[1]);
     rgb[1] = ~(~buttons[0] &  buttons[1]);

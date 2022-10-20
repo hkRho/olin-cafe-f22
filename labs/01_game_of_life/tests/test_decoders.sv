@@ -15,14 +15,14 @@ module test_decoders;
     $dumpfile("decoders.fst");
     $dumpvars(0, UUT);
     
-    ena = 1;
+    ena = 0;
     $display("ena in | out");
     for (int i = 0; i < 8; i = i + 1) begin
       in = i[2:0];
       #1 $display("%1b %2b | %4b", ena, in, out);
     end
 
-    ena = 0;
+    ena = 1;
     for (int i = 0; i < 8; i = i + 1) begin
       in = i[2:0];
       #1 $display("%1b %2b | %4b", ena, in, out);

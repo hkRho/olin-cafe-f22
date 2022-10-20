@@ -30,5 +30,15 @@ end
 
 wire [N-1:0] x_decoded;
 decoder_3_to_8 COL_DECODER(ena, x, x_decoded);
+ 
+assign cols = x_decoded;
+
+always_comb begin: LED_ROWS
+  rows[0] = ~|(x_decoded[4:0] & cells[4:0]);
+  rows[1] = ~|(x_decoded[4:0] & cells[9:5]);
+  rows[2] = ~|(x_decoded[4:0] & cells[14:10]);
+  rows[3] = ~|(x_decoded[4:0] & cells[19:15]);
+  rows[4] = ~|(x_decoded[4:0] & cells[24:20]);
+end
 
 endmodule
