@@ -1,5 +1,8 @@
 ### Teammates: Mari Kang, HK Rho
 
+### Video of a Working Game of Life
+[This is an external link to the video](https://drive.google.com/file/d/1z06Vn3lmP3cshdxeKCaygRZe8IFp5iIR/view?usp=sharing)
+
 # Conway's Game of Life
 In this lab you will implement a version of [Conway's Game of Life](https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life).
 
