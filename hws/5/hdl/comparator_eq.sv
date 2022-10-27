@@ -4,7 +4,9 @@ input wire signed [N-1:0] a, b;
 output logic out;
 
 // Using only *structural* combinational logic, make a module that computes if a == b. 
-
+always_comb begin : eq
+    out = & (a ~^ b);
+end
 // Copy any other modules you use into the HDL folder and update the Makefile accordingly.
 
 

@@ -1,0 +1,33 @@
+[*]
+[*] GTKWave Analyzer v3.3.103 (w)1999-2019 BSI
+[*] Thu Oct 27 03:19:44 2022
+[*]
+[dumpfile] "/home/hk/Desktop/olin-cafe-f22/hws/5/pulse_generator.fst"
+[dumpfile_mtime] "Thu Oct 27 03:17:46 2022"
+[dumpfile_size] 994
+[savefile] "/home/hk/Desktop/olin-cafe-f22/hws/5/wave_cfgs/pulse_generator.gtkw"
+[timestart] 0
+[size] 1000 600
+[pos] -1 -1
+*-17.000000 2 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] test_pulse_generator.
+[sst_width] 233
+[signals_width] 150
+[sst_expanded] 1
+[sst_vpaned_height] 144
+@28
+test_pulse_generator.UUT.clk
+test_pulse_generator.UUT.rst
+test_pulse_generator.UUT.ena
+@22
+test_pulse_generator.UUT.counter[6:0]
+@28
+test_pulse_generator.UUT.counter_rst
+@22
+test_pulse_generator.UUT.ticks[6:0]
+@200
+-Expected Output
+@28
+test_pulse_generator.UUT.out
+[pattern_trace] 1
+[pattern_trace] 0
