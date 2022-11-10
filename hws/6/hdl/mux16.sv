@@ -8,7 +8,7 @@ module mux16(
 );
 
 //parameter definitions
-parameter N = 1;
+parameter N = 32;
 //port definitions
 input wire [N-1:0] in00, in01, in02, in03, in04, in05, in06, in07, in08, 
   in09, in10, in11, in12, in13, in14, in15;

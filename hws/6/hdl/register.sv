@@ -9,7 +9,7 @@ unless explicitly told not to.
 
 module register(clk, ena, rst, d, q);
 
-parameter N = 1;
+parameter N = 32;
 parameter RESET = 0; // Value to reset to.
 
 input wire clk, ena, rst;
