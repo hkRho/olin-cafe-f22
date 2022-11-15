@@ -72,7 +72,7 @@ MMCME2_BASE_inst (
 // Touch signals
 touch_t touch0, touch1;
 
-`define LAB_PART_1 // Uncomment once you start working on the next parts.
+// `define LAB_PART_1 // Uncomment once you start working on the next parts.
 
 /* ------------------------------------------------------------------------- */
 /* -- Part 1 - Intro to Sequential Logic on FPGAs                         -- */
@@ -95,9 +95,15 @@ pulse_generator #(.N($clog2(CLK_HZ/100))) PULSE_100Hz (
   .clk(clk), .rst(rst), .ena(1'b1), .out(pulse_100Hz),
   .ticks(CLK_HZ/100)
 );
+wire pulse_1000Hz;
+pulse_generator #(.N($clog2(CLK_HZ/1000))) PULSE_1000Hz (
+  .clk(clk), .rst(rst), .ena(1'b1), .out(pulse_1000Hz),
+  .ticks(CLK_HZ/1000)
+);
+
 wire [PWM_WIDTH-1:0] triangle0, triangle1;
 triangle_generator #(.N(PWM_WIDTH)) LED_FADER0 (
-  .clk(clk), .rst(rst), .ena(pulse_10Hz), .out(triangle0)
+  .clk(clk), .rst(rst), .ena(pulse_1000Hz), .out(triangle0)
 );
 
 triangle_generator #(.N(PWM_WIDTH)) LED_FADER1 (
@@ -114,7 +120,7 @@ pwm #(.N(PWM_WIDTH)) PWM_LED1 (
   .out(leds[1])
 );
 
-`define LAB_PART_1
+// `define LAB_PART_1
 always_comb begin: led_pwm_muxes
 `ifdef LAB_PART_1
   // For part 1, use the output of the triangle generators.
@@ -128,7 +134,7 @@ always_comb begin: led_pwm_muxes
 end
 
 always_comb begin: rgb_leds
-  rgb = 3'b110; // RGB leds are active low, so this sets the LEDs to blue.
+  rgb = 3'b010; // RGB leds are active low, so this sets the LEDs to blue.
   // Feel free to add more logic here as a debugging signal!
 end
 
@@ -149,7 +155,7 @@ ili9341_display_controller ILI9341(
   .vram_rd_addr(vram_rd_addr),
   .vram_rd_data(vram_rd_data),
   // !!! NOTE - change enable_test_pattern to zero once you start implementing the video ram !!!
-  .enable_test_pattern(1'b1) 
+  .enable_test_pattern(1'b0) 
 );
 
 /* ------------------------------------------------------------------------- */
@@ -182,5 +188,42 @@ block_ram #(.W(VRAM_W), .L(VRAM_L)) VRAM(
   .wr_ena(vram_wr_ena), .wr_addr(vram_wr_addr), .wr_data(vram_wr_data)
 );
 // Add your vram control FSM here:
+
+typedef enum logic [1:0] {
+  RST,
+  IDLE,
+  WRITE
+} state_t;
+
+state_t state;
+
+always_ff @(posedge clk) begin
+  if (rst) begin
+    // $display("RESET\n");
+    vram_clear_counter <= VRAM_L - 1;
+    state <= RST;
+  end
+  case(state)
+    RST: begin
+      vram_wr_ena <= 1'b1;
+      vram_wr_addr <= vram_clear_counter;
+      vram_wr_data <= BLACK;
+      vram_clear_counter <= vram_clear_counter - 1;
+      if (vram_clear_counter == 0) state <= IDLE;
+    end
+
+    IDLE: begin
+      vram_wr_ena <= 1'b0;
+      if (touch0.valid) state <= WRITE;
+    end
+
+    WRITE: begin
+      state <= IDLE;
+      vram_wr_ena <= 1'b1;
+      vram_wr_addr <= DISPLAY_WIDTH * touch0.y + touch0.x;
+      vram_wr_data <= WHITE;
+    end
+  endcase
+end
 
 endmodule

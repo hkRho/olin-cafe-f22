@@ -153,10 +153,10 @@ always_comb begin  : display_color_logic
     end
     else begin
       case({pixel_x[4], pixel_y[4]})
-        2'b00: pixel_color = RED;
-        2'b01: pixel_color = GREEN;
-        2'b10: pixel_color = BLUE;
-        2'b11: pixel_color = BLACK;
+        2'b00: pixel_color = PURPLE;
+        2'b01: pixel_color = PINK;
+        2'b10: pixel_color = YELLOW;
+        2'b11: pixel_color = OLIVE;
       endcase
     end
   end else begin
