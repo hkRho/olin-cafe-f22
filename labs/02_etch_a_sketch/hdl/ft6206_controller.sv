@@ -55,7 +55,7 @@ enum logic [4:0] {
   S_GET_REG_DONE = 9,
   S_TOUCH_DONE,
   S_ERROR
-} state, state_after_wait;
+} state, state_after_wait; //There are two states - state and state_after_wait
 
 logic [1:0] num_touches;
 touch_t touch0_buffer, touch1_buffer;
@@ -63,7 +63,9 @@ logic [$clog2(N_RD_BYTES):0] bytes_counter;
 
 always_ff @(posedge clk) begin
   if(rst) begin
+    //If reset button is pressed, change the current state to initial, which state then becomes S_SET_THRESHOLD_REG.
     state <= S_INIT;
+    //If reset button is pressed, change state_after_wait to IDLE, which state then becomes S_GET_REG_REG when it's ready.
     state_after_wait <= S_IDLE;
     bytes_counter <= 0;
     // TODO(avinash) - merge touch0 and touch1 buffers, can get away with less state that way.
@@ -74,6 +76,7 @@ always_ff @(posedge clk) begin
   end else begin
     case(state)
       S_IDLE : begin
+        // When i_ready and ena is true, the active register becomes TD_STATUS the state is set to S_GET_REG_REG
         if(i_ready & ena)
           active_register <= TD_STATUS;
           state <= S_GET_REG_REG;
@@ -82,6 +85,7 @@ always_ff @(posedge clk) begin
         state <= S_SET_THRESHOLD_REG;
       end
       S_SET_THRESHOLD_REG: begin
+        //When state is S_SET_THREHOLD_REG, wait for i2c to write, and after waiting go to S_SET_THREHOLD_DATA
         state <= S_WAIT_FOR_I2C_WR;
         state_after_wait <= S_SET_THRESHOLD_DATA;
       end
@@ -90,10 +94,12 @@ always_ff @(posedge clk) begin
         state_after_wait <= S_IDLE;
       end
       S_GET_REG_REG: begin
-        state <= S_WAIT_FOR_I2C_WR;
+        //When state is S_GET_REG_REG, wait for i2c to write, and after waiting go to S_GET_REG_DATA
+        state <= S_WAIT_FOR_I2C_WR; 
         state_after_wait <= S_GET_REG_DATA;
       end
       S_GET_REG_DATA: begin
+        //When state is S_GET_REG_DATA, wait for i2c to read, and go to S_GET_REG_DONE when ready
         state <= S_WAIT_FOR_I2C_RD;
         state_after_wait <= S_GET_REG_DONE;
       end
@@ -106,13 +112,13 @@ always_ff @(posedge clk) begin
           case(active_register)
             TD_STATUS: begin
               num_touches <= |o_data[3:2] ? 0 : o_data[1:0];
-              if(o_data[3:0] == 4'd2) begin
+              if(o_data[3:0] == 4'd2) begin // If there's two touches, both touches are valid
                 touch0_buffer.valid <= 1;
                 touch1_buffer.valid <= 1;
-              end else if (o_data[3:0] == 4'd1) begin
+              end else if (o_data[3:0] == 4'd1) begin // If there's one touch, touch0 is valid
                 touch0_buffer.valid <= 1;
                 touch1_buffer.valid <= 0;
-              end else begin
+              end else begin // Else, none of the touches are valid
                 touch0.valid <= 0;
                 touch1.valid <= 0;
                 touch0_buffer.valid <= 0;
@@ -141,6 +147,7 @@ always_ff @(posedge clk) begin
         end
       end
       S_TOUCH_DONE: begin
+        //When S_TOUCH_DONE, fix the orientation and set the state back to S_IDLE
         if(num_touches >= 2'd1) begin
           touch0.valid <= touch0_buffer.valid;
           touch0.x <= DISPLAY_WIDTH - touch0_buffer.x; // fix orientation
@@ -152,12 +159,14 @@ always_ff @(posedge clk) begin
         state <= S_IDLE;
       end      
       S_WAIT_FOR_I2C_WR : begin
+        // If ready, set the state to the next state (state_after_wait)
         if(i_ready) state <= state_after_wait;
       end
       S_WAIT_FOR_I2C_RD : begin
+        // If ready and valid, set the state to the next state (state_after_wait)
         if(i_ready & o_valid) state <= state_after_wait;
       end
-    endcase
+    endcases
   end
 end
 

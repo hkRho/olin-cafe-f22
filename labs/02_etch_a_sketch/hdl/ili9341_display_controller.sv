@@ -110,35 +110,35 @@ ILI9341_register_t current_command;
 */
 
 always_comb case(state)
-  S_START_FRAME, S_TX_PIXEL_DATA_START : i_valid = 1;
+  S_START_FRAME, S_TX_PIXEL_DATA_START : i_valid = 1;   // input is valid at starting states
   S_INIT : begin
     case(cfg_state)
-      S_CFG_SEND_CMD, S_CFG_SEND_DATA: i_valid = 1;
-      default: i_valid = 0;
+      S_CFG_SEND_CMD, S_CFG_SEND_DATA: i_valid = 1;     // if S_INIT and these following cfg_states, then input is valid
+      default: i_valid = 0;   // if not one of these states, then input is not valid
     endcase
   end
   default: i_valid = 0;
 endcase
   
 always_comb case (state) 
-  S_START_FRAME : current_command = RAMWR;
-  default : current_command = NOP;
+  S_START_FRAME : current_command = RAMWR;  // set current_command to memory write
+  default : current_command = NOP;          // if not S_START_FRAME, then do nothing
 endcase
 
 always_comb case(state)
-  S_INIT: i_data = {8'd0, rom_data};
-  S_START_FRAME: i_data = {8'd0, current_command};
-  default: i_data = vram_rd_data_valid ? vram_rd_data : pixel_color;
+  S_INIT: i_data = {8'd0, rom_data};                // when S_INIT, we send 16-bit DATA over
+  S_START_FRAME: i_data = {8'd0, current_command};  // when S_START_FRAME, we end 16-bit command over
+  default: i_data = vram_rd_data_valid ? vram_rd_data : pixel_color;  // if vram_rd_data_valid, then i_data = vram_rd_data. else i_data = pixel_color
 endcase
 
 always_comb case (state)
-  S_INIT, S_START_FRAME: spi_mode = WRITE_8;
-  default : spi_mode = WRITE_16;
+  S_INIT, S_START_FRAME: spi_mode = WRITE_8;    // set spi-mode to 8-bits
+  default : spi_mode = WRITE_16;                // set spi-mode to 16-bits by default
 endcase
 
 always_comb begin
-  hsync = pixel_x == (DISPLAY_WIDTH-1);
-  vsync = hsync & (pixel_y == (DISPLAY_HEIGHT-1));
+  hsync = pixel_x == (DISPLAY_WIDTH-1);             // true if last pixel of any row is HIGH
+  vsync = hsync & (pixel_y == (DISPLAY_HEIGHT-1));  // true if the last pixel of the display is HIGH
 end
 
 logic vram_rd_data_valid;
@@ -188,54 +188,54 @@ always_ff @(posedge clk) begin : main_fsm
     pixel_x <= 0;
     pixel_y <= 0;
     rom_addr <= 0;
-    data_commandb <= 1;
+    data_commandb <= 1;   // at reset, send data
   end
   else if(ena) begin
     case (state)
       S_INIT: begin
         case (cfg_state)
-          S_CFG_GET_DATA_SIZE : begin
+          S_CFG_GET_DATA_SIZE : begin               // starting state after rst
             cfg_state_after_wait <= S_CFG_GET_CMD;
-            cfg_state <= S_CFG_MEM_WAIT;
+            cfg_state <= S_CFG_MEM_WAIT;            // cfg_state becomes cfg_state_after_wait (S_CFG_GET_CMD)
             rom_addr <= rom_addr + 1;
             case(rom_data) 
-              8'hFF: begin
-                cfg_bytes_remaining <= 0;
-                cfg_delay_counter <= CFG_CMD_DELAY;
+              8'hFF: begin                            // data is 11111111
+                cfg_bytes_remaining <= 0;             // no more bytes to read
+                cfg_delay_counter <= CFG_CMD_DELAY;   // 150ms delay
               end
-              8'h00: begin
-                cfg_bytes_remaining <= 0;
-                cfg_delay_counter <= 0;
-                cfg_state <= S_CFG_DONE;
+              8'h00: begin                  // data is 00000000
+                cfg_bytes_remaining <= 0;   // no more bytes to read
+                cfg_delay_counter <= 0;     // no delay
+                cfg_state <= S_CFG_DONE;    // set state to S_START_FRAME (entry point to Main FSM!)
               end
               default: begin
-                cfg_bytes_remaining <= rom_data;
-                cfg_delay_counter <= 0;
+                cfg_bytes_remaining <= rom_data;  // by default, read rom_data
+                cfg_delay_counter <= 0;           // no delay
               end
             endcase
           end
           S_CFG_GET_CMD: begin
             cfg_state_after_wait <= S_CFG_SEND_CMD;
-            cfg_state <= S_CFG_MEM_WAIT;
+            cfg_state <= S_CFG_MEM_WAIT;    // cfg_state becomes cfg_state_after_wait (S_CFG_SEND_CMD)
           end
           S_CFG_SEND_CMD : begin
-            data_commandb <= 0;
+            data_commandb <= 0;   // send commands
             if(rom_data == 0) begin
-              cfg_state <= S_CFG_DONE;
+              cfg_state <= S_CFG_DONE;  // set cfg_state to done if there is NO rom_data
             end else begin
-              cfg_state <= S_CFG_SPI_WAIT;
-              cfg_state_after_wait <= S_CFG_GET_DATA;
+              cfg_state <= S_CFG_SPI_WAIT;              
+              cfg_state_after_wait <= S_CFG_GET_DATA;   // get data if there IS rom_data
             end
           end
           S_CFG_GET_DATA: begin
-            data_commandb <= 1;
-            rom_addr <= rom_addr + 1;
-            if(cfg_bytes_remaining > 0) begin
+            data_commandb <= 1;                 // send data
+            rom_addr <= rom_addr + 1;           // move rom_addr to next pixel
+            if(cfg_bytes_remaining > 0) begin   // if there are remainig bytes, keep sending data until it runs out
               cfg_state_after_wait <= S_CFG_SEND_DATA;
               cfg_state <= S_CFG_MEM_WAIT;
               cfg_bytes_remaining <= cfg_bytes_remaining - 1;
-            end else begin
-              cfg_state_after_wait <= S_CFG_GET_DATA_SIZE;
+            end else begin                      // if there are no more bytes to send, then get data
+              cfg_state_after_wait <= S_CFG_GET_DATA_SIZE;  // full loop starts again
               cfg_state <= S_CFG_MEM_WAIT;
             end
           end
@@ -247,11 +247,11 @@ always_ff @(posedge clk) begin : main_fsm
             state <= S_START_FRAME; // S_TX_PIXEL_DATA_START; //TODO@(avinash)
           end
           S_CFG_SPI_WAIT : begin
-            if(cfg_delay_counter > 0) cfg_delay_counter <= cfg_delay_counter-1;
-            else if (i_ready) begin
-               cfg_state <= cfg_state_after_wait;
-               cfg_delay_counter <= 0;
-               data_commandb <= 1;
+            if(cfg_delay_counter > 0) cfg_delay_counter <= cfg_delay_counter-1;   // wait for delay
+            else if (i_ready) begin               // if no delay and input is ready
+               cfg_state <= cfg_state_after_wait; // wait has occured; set state to state_after_wait
+               cfg_delay_counter <= 0;            // no delay
+               data_commandb <= 1;                // send data
             end
           end
           S_CFG_MEM_WAIT : begin
@@ -262,24 +262,24 @@ always_ff @(posedge clk) begin : main_fsm
         endcase
       end
       S_WAIT_FOR_SPI: begin
-        if(i_ready) begin
+        if(i_ready) begin   // a check to make sure that i_ready is true for executing the states below
           state <= state_after_wait;
         end
       end
       S_START_FRAME: begin
-        data_commandb <= 0;
+        data_commandb <= 0;     // send command
         state <= S_WAIT_FOR_SPI;
         state_after_wait <= S_TX_PIXEL_DATA_START;
       end
       S_TX_PIXEL_DATA_START: begin
-        data_commandb <= 1;
-        state_after_wait <= S_INCREMENT_PIXEL;
-        state <= S_WAIT_FOR_SPI;
+        data_commandb <= 1;                     // send data
+        state_after_wait <= S_INCREMENT_PIXEL;  // execute S_INCREMENT_PIXEL after S_WAIT_FOR_SPI
+        state <= S_WAIT_FOR_SPI;                // state becomes state_after_wait (S_INCREMENT_PIXEL); spi is a time buffer
       end
       S_TX_PIXEL_DATA_BUSY: begin
         if(i_ready) state <= S_INCREMENT_PIXEL;
       end
-      S_INCREMENT_PIXEL: begin
+      S_INCREMENT_PIXEL: begin    // increment column first, then rows 
         state <= S_TX_PIXEL_DATA_START;
         if(pixel_x < (DISPLAY_WIDTH-1)) begin
           pixel_x <= pixel_x + 1;
@@ -289,12 +289,12 @@ always_ff @(posedge clk) begin : main_fsm
             pixel_y <= pixel_y + 1;
           end else begin
             pixel_y <= 0;
-            state <= S_START_FRAME;
+            state <= S_START_FRAME;   // set state to S_START_FRAME only when all the incrementing is done
           end
         end
       end
       default: begin
-        state <= S_ERROR;
+        state <= S_ERROR;   // if at S_ERROR, set invalid pixel values for x, y
         pixel_y <= -1;
         pixel_x <= -1;
       end
