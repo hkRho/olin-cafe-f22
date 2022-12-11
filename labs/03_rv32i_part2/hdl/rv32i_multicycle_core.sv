@@ -66,19 +66,6 @@ register_file REGISTER_FILE(
   .rd_data0(reg_data1), .rd_data1(reg_data2)
 );
 
-// ALU and related control signals
-// Feel free to replace with your ALU from the homework.
-logic [31:0] src_a, src_b;
-alu_control_t alu_control;
-wire [31:0] alu_result;
-logic [31:0] last_result; // book calls it ALUOut
-wire overflow, zero, equal;
-alu_behavioural ALU (
-  .a(src_a), .b(src_b), .result(alu_result),
-  .control(alu_control),
-  .overflow(overflow), .zero(zero), .equal(equal)
-);
-
 // Implement your multicycle rv32i CPU here!
 enum logic [3:0] {S_FETCH = 0, S_DECODE = 1, S_EXECUTE_I = 2, S_WRITEBACK = 3, S_ERROR = 4'd15
 } state;
@@ -122,6 +109,44 @@ always_ff @(posedge clk) begin: main_fsm
   end
 end
 
+
+// ALU and related control signals
+// Feel free to replace with your ALU from the homework.
+logic [31:0] src_a, src_b;
+alu_control_t alu_control, ri_alu_control;
+wire [31:0] alu_result;
+logic [31:0] last_result; // book calls it ALUOut
+wire overflow, zero, equal;
+alu_behavioural ALU (
+  .a(src_a), .b(src_b), .result(alu_result),
+  .control(alu_control),
+  .overflow(overflow), .zero(zero), .equal(equal)
+);
+
+//ALU Control Unit
+logic [31:0] alu_out;
+
+always_comb begin : ALU_control_unit
+  case (state)
+    S_FETCH: begin
+      src_a = PC;
+      src_b = 32'd4;
+      alu_control = ALU_ADD;
+    end
+    S_EXECUTE_I: begin
+      src_a = regA;
+      src_b = sign_extended_immediate;
+      alu_out = alu_result;
+      alu_control = ri_alu_control;
+    end
+    default: begin
+      src_a = 0;
+      src_b = 0;
+      alu_control = ri_alu_control;
+    end
+  endcase
+end
+
 // Instruction Decoding
 logic [6:0] op;
 logic [3:0] func3;
@@ -137,9 +162,21 @@ always_comb begin : DECODER
   rs1 = IR[19:15];
   rs2 = IR[24:20];
   imm12 = IR[31:20];
-end
 
-logic [31:0] alu_out;
+  case (func3)
+    3'b000: ri_alu_control = ALU_ADD;
+    3'b001: ri_alu_control = ALU_SLL;
+    3'b010: ri_alu_control = ALU_SLT;
+    3'b011: ri_alu_control = ALU_SLTU;
+    3'b100: ri_alu_control = ALU_XOR;
+    3'b101: begin
+      if (func7[5]) ri_alu_control = ALU_SRA;
+      else ri_alu_control = ALU_SRL;
+    end
+    3'b110: ri_alu_control = ALU_OR;
+    3'b111: ri_alu_control = ALU_AND;
+  endcase
+end
 
 logic [31:0] sign_extended_immediate;
 always_comb begin : SIGN_EXTENDER
@@ -156,28 +193,6 @@ always_comb begin : PC_control_unit
     default: begin
       PC_ena = 0;
       PC_next = 0;
-    end
-  endcase
-end
-
-//ALU Control Unit
-always_comb begin : ALU_control_unit
-  case (state)
-    S_FETCH: begin
-      src_a = PC;
-      src_b = 32'd4;
-      alu_control = ALU_ADD;
-    end
-    S_EXECUTE_I: begin
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
-      alu_control = ALU_ADD;
-    end
-    default: begin
-      src_a = 0;
-      src_b = 0;
-      alu_control = ALU_ADD;
     end
   endcase
 end
