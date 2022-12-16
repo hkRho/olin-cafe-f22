@@ -74,7 +74,7 @@ logic [6:0] func7;
 logic [11:0] imm12;
 logic [19:0] imm20;
 
-logic rtype;
+logic rtype, ltype;
 
 always_comb begin : DECODER
   op = IR[6:0];
@@ -86,6 +86,7 @@ always_comb begin : DECODER
   imm12 = IR[31:20];
 
   rtype = (op == OP_RTYPE);
+  ltype = (op == OP_LTYPE);
 
   case (func3)
     3'b000: begin
@@ -106,9 +107,19 @@ always_comb begin : DECODER
 end
 
 
+// IMMEDIATE SIGN EXTENDER
+logic [31:0] sign_extended_immediate;
+
+always_comb begin : SIGN_EXTENDER
+  sign_extended_immediate = { {20{imm12[11]}}, imm12 };
+end
+
+
+// MAIN FSM
 enum logic [3:0] {
     S_FETCH = 0, S_DECODE = 1, S_EXECUTE_I = 2, 
-    S_EXECUTE_R, S_WRITEBACK, S_ERROR = 4'd15
+    S_EXECUTE_R, S_WRITEBACK, S_MEM_ADDR,
+    S_MEM_READ, S_MEM_WRITEBACK, S_ERROR = 4'd15
 } state;
 
 always_ff @(posedge clk) begin: main_fsm
@@ -128,6 +139,7 @@ always_ff @(posedge clk) begin: main_fsm
       case (op)
         OP_ITYPE: state <= S_EXECUTE_I;
         OP_RTYPE: state <= S_EXECUTE_R;
+        OP_LTYPE: state <= S_MEM_ADDR;
         default: state <= S_ERROR;
       endcase
 
@@ -142,6 +154,19 @@ always_ff @(posedge clk) begin: main_fsm
     end
 
     S_WRITEBACK: begin
+      state <= S_FETCH;
+      instructions_completed <= instructions_completed + 1;
+    end
+
+    S_MEM_ADDR: begin
+      state <= S_MEM_READ;
+    end
+
+    S_MEM_READ: begin
+      state <= S_MEM_WRITEBACK;
+    end
+
+    S_MEM_WRITEBACK: begin
       state <= S_FETCH;
       instructions_completed <= instructions_completed + 1;
     end
@@ -165,70 +190,239 @@ alu_behavioural ALU (
   .overflow(overflow), .zero(zero), .equal(equal)
 );
 
-//ALU Control Unit
+// ALU Control Unit
 logic [31:0] alu_out;
 
 always_comb begin : ALU_control_unit
   case (state)
     S_FETCH: begin
+      // PC Control Unit
+      PC_ena = 1;
+      PC_next = alu_result;
+
+      //ALU Control Unit
       src_a = PC;
       src_b = 32'd4;
       alu_control = ALU_ADD;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 1;
     end
+    
     S_EXECUTE_I: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+
+      //ALU Control Unit
       src_a = regA;
       src_b = sign_extended_immediate;
       alu_out = alu_result;
       alu_control = ri_alu_control;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
     end
+
     S_EXECUTE_R: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+      
+      //ALU Control Unit
       src_a = regA;
       src_b = regB;
       alu_out = alu_result;
       alu_control = ri_alu_control;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
     end
-    default: begin
+
+    S_WRITEBACK: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+      
+      //ALU Control Unit
       src_a = 0;
       src_b = 0;
       alu_control = ri_alu_control;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 1;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
     end
-  endcase
-end
 
-
-logic [31:0] sign_extended_immediate;
-always_comb begin : SIGN_EXTENDER
-  sign_extended_immediate = { {20{imm12[11]}}, imm12 };
-end
-
-//PC Control Unit
-always_comb begin : PC_control_unit
-  case (state)
-    S_FETCH: begin
-      PC_ena = 1;
-      PC_next = alu_result;
-    end
-    default: begin
+    S_MEM_ADDR: begin
+      // PC Control Unit
       PC_ena = 0;
       PC_next = 0;
+      
+      //ALU Control Unit
+      src_a = regA;
+      src_b = sign_extended_immediate;
+      alu_out = alu_result;
+      alu_control = ALU_ADD;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
+    end
+
+    S_MEM_READ: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+      
+      //ALU Control Unit
+      src_a = regA;
+      src_b = sign_extended_immediate;
+      alu_out = alu_result;
+      alu_control = ALU_ADD;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_RESULT;
+      mem_wr_ena = 0; // we are reading! not writing
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
+    end
+    
+    S_MEM_WRITEBACK: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+      
+      //ALU Control Unit
+      src_a = regA;
+      src_b = sign_extended_immediate;
+      alu_out = alu_result;
+      alu_control = ALU_ADD;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_RESULT;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 1;
+      rfile_wr_data = mem_rd_data;
+
+      // IR Control
+      IR_write = 0;
+    end
+
+    default: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+
+      //ALU Control Unit  
+      src_a = 0;
+      src_b = 0;
+      alu_control = ri_alu_control;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
     end
   endcase
 end
 
-//Memory Control Unit
-always_comb begin : Memory_control_unit
-  mem_addr = PC;
-  mem_wr_ena = 0;
+enum logic {MEM_SRC_PC, MEM_SRC_RESULT} mem_src;
+always_comb begin : memory_read_address_mux
+  case (mem_src)
+    MEM_SRC_RESULT : mem_addr = alu_result;
+    MEM_SRC_PC : mem_addr = PC;
+    default: mem_addr = PC;
+  endcase
 end
 
-//IR Control
-always_comb IR_write = (state == S_FETCH);
+// //PC Control Unit
+// always_comb begin : PC_control_unit
+//   case (state)
+//     S_FETCH: begin
+//       PC_ena = 1;
+//       PC_next = alu_result;
+//     end
+//     default: begin
+//       PC_ena = 0;
+//       PC_next = 0;
+//     end
+//   endcase
+// end
 
-//Register File Control
-always_comb begin : rfile_control_unit
-  reg_write = (state == S_WRITEBACK);
-  rfile_wr_data = last_result;
-end
+// //Memory Control Unit
+// // enum logic {MEM_SRC_PC, MEM_SRC_RESULT} mem_src;
+// always_comb begin : Memory_control_unit
+//   // case (mem_src)
+//   //   MEM_SRC_RESULT : mem_addr = alu_result;
+//   //   MEM_SRC_PC : mem_addr = PC;
+//   //   default: mem_addr = PC;
+//   // endcase
+//   mem_addr = PC;
+//   mem_wr_ena = 0;
+// end
+
+
+// //IR Control
+// always_comb IR_write = (state == S_FETCH);
+
+
+// //Register File Control
+// always_comb begin : rfile_control_unit
+//   reg_write = (state == S_WRITEBACK);
+//   rfile_wr_data = last_result;
+// end
 
 
 endmodule
