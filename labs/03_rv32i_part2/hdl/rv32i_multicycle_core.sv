@@ -74,7 +74,7 @@ logic [6:0] func7;
 logic [11:0] imm12;
 logic [19:0] imm20;
 
-logic rtype, ltype;
+logic rtype, ltype, stype;
 
 always_comb begin : DECODER
   op = IR[6:0];
@@ -87,6 +87,7 @@ always_comb begin : DECODER
 
   rtype = (op == OP_RTYPE);
   ltype = (op == OP_LTYPE);
+  stype = (op == OP_STYPE);
 
   case (func3)
     3'b000: begin
@@ -111,7 +112,8 @@ end
 logic [31:0] sign_extended_immediate;
 
 always_comb begin : SIGN_EXTENDER
-  sign_extended_immediate = { {20{imm12[11]}}, imm12 };
+  if (stype) sign_extended_immediate = {{20{IR[31]}}, IR[31:25],IR[11:7]};
+  else sign_extended_immediate = { {20{imm12[11]}}, imm12 };
 end
 
 
@@ -119,7 +121,8 @@ end
 enum logic [3:0] {
     S_FETCH = 0, S_DECODE = 1, S_EXECUTE_I = 2, 
     S_EXECUTE_R, S_WRITEBACK, S_MEM_ADDR,
-    S_MEM_READ, S_MEM_WRITEBACK, S_ERROR = 4'd15
+    S_MEM_READ, S_MEM_WRITEBACK, S_MEM_WRITE,
+    S_ERROR = 4'd15
 } state;
 
 always_ff @(posedge clk) begin: main_fsm
@@ -139,7 +142,7 @@ always_ff @(posedge clk) begin: main_fsm
       case (op)
         OP_ITYPE: state <= S_EXECUTE_I;
         OP_RTYPE: state <= S_EXECUTE_R;
-        OP_LTYPE: state <= S_MEM_ADDR;
+        OP_LTYPE, OP_STYPE: state <= S_MEM_ADDR;
         default: state <= S_ERROR;
       endcase
 
@@ -159,7 +162,8 @@ always_ff @(posedge clk) begin: main_fsm
     end
 
     S_MEM_ADDR: begin
-      state <= S_MEM_READ;
+      if (stype) state <= S_MEM_WRITE;
+      else state <= S_MEM_READ;
     end
 
     S_MEM_READ: begin
@@ -348,6 +352,30 @@ always_comb begin : ALU_control_unit
 
       // Register File Control
       reg_write = 1;
+      rfile_wr_data = mem_rd_data;
+
+      // IR Control
+      IR_write = 0;
+    end
+
+    S_MEM_WRITE: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = 0;
+      
+      //ALU Control Unit
+      src_a = regA;
+      src_b = sign_extended_immediate;
+      alu_out = alu_result;
+      alu_control = ALU_ADD;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_RESULT;
+      mem_wr_data = regA;
+      mem_wr_ena = 1;
+
+      // Register File Control
+      reg_write = 0;
       rfile_wr_data = mem_rd_data;
 
       // IR Control
