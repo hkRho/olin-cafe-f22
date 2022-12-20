@@ -1,3 +1,57 @@
+HK Rho, Mari Kang
+
+## Instruction Checklist
+Optional instructions are in italics.
+### R-types
+- [x] add
+- [x] sub
+- [x] xor
+- [x] or
+- [x] and
+- [x] sll
+- [x] srl
+- [x] sra
+- [x] slt
+- [x] sltu
+### I-types
+- [x] addi
+- [x] xori
+- [x] ori
+- [x] andi
+- [x] slli
+- [x] srli
+- [x] srai
+- [x] slti
+- [x] sltiu
+### Memory-Types (Loads/Stores)
+- [x] lw
+- [x] sw
+- [ ] *lb*
+- [ ] *lh*
+- [ ] *lbu*
+- [ ] *lhu*
+- [ ] *sb*
+- [ ] *sh*
+
+### B-types (Branches)
+- [x] beq
+- [x] bne
+- [ ] *blt*
+- [ ] *bge*
+- [ ] *bltu*
+- [ ] *bgeu*
+### J-types (Jumps)
+- [x] jal
+- [x] jalr (technically an i-type)
+### U-types (Upper immediates)
+- [ ] *lui*
+- [ ] *auipc*
+
+Note, the above list doesn't include some common psuedo-instructions like `ret` and `j` and `not` since those can be experssed in terms of what we've already listed here. See `assembler.py` for more details.
+
+## Custom Assembly File
+You can find the custom assembly file in asm folder (led_switching.s). Our breadboard and the FPGA were in different countries because we were moving out, so we couldn't test the led. Instead, we looked at the code from peripherals_led.s and each spent about 20 mins to understand the code.
+
 # Multicycle RISC-V CPU
 This lab is all about designing a working rv32i (integer subset of the RISC-V spec) system. The overall system (in `rv32i_system.sv`) consists of a computation core (datapath, alu, register file, etc.) and a Memory Management Unit (MMU). The MMU will be critical when we start connecting our CPU to external peripherals, but for now you can treat it as a RAM with one read/write port.
 
@@ -46,51 +100,3 @@ You can use `make analyze_rv32i_system` to generate a variety of reports showing
 
 Your submission should include any extra tests you've run, as well as sketches/block diagrams showing the main multicycle FSM as well as the datapaths for a few R, I, memory, and branch instructions. To make grading easier, mark off the instructions you have implemented on the list below before submitting.
 
-## Instruction Checklist
-Optional instructions are in italics.
-### R-types
-- [ ] add
-- [ ] sub
-- [ ] xor
-- [ ] or
-- [ ] and
-- [ ] sll
-- [ ] srl
-- [ ] sra
-- [ ] slt
-- [ ] sltu
-### I-types
-- [ ] addi
-- [ ] xori
-- [ ] ori
-- [ ] andi
-- [ ] slli
-- [ ] srli
-- [ ] srai
-- [ ] slti
-- [ ] sltiu
-### Memory-Types (Loads/Stores)
-- [ ] lw
-- [ ] sw
-- [ ] *lb*
-- [ ] *lh*
-- [ ] *lbu*
-- [ ] *lhu*
-- [ ] *sb*
-- [ ] *sh*
-
-### B-types (Branches)
-- [ ] beq
-- [ ] bne
-- [ ] *blt*
-- [ ] *bge*
-- [ ] *bltu*
-- [ ] *bgeu*
-### J-types (Jumps)
-- [ ] jal
-- [ ] jalr (technically an i-type)
-### U-types (Upper immediates)
-- [ ] *lui*
-- [ ] *auipc*
-
-Note, the above list doesn't include some common psuedo-instructions like `ret` and `j` and `not` since those can be experssed in terms of what we've already listed here. See `assembler.py` for more details.
