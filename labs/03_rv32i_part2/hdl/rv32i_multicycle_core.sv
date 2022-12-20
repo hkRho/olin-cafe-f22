@@ -74,7 +74,7 @@ logic [6:0] func7;
 logic [11:0] imm12;
 logic [19:0] imm20;
 
-logic rtype, ltype, stype;
+logic rtype, ltype, stype, btype;
 
 always_comb begin : DECODER
   op = IR[6:0];
@@ -88,6 +88,7 @@ always_comb begin : DECODER
   rtype = (op == OP_RTYPE);
   ltype = (op == OP_LTYPE);
   stype = (op == OP_STYPE);
+  btype = (op == OP_BTYPE);
 
   case (func3)
     3'b000: begin
@@ -113,6 +114,7 @@ logic [31:0] sign_extended_immediate;
 
 always_comb begin : SIGN_EXTENDER
   if (stype) sign_extended_immediate = {{20{IR[31]}}, IR[31:25],IR[11:7]};
+  else if (btype) sign_extended_immediate = {{20{IR[31]}}, IR[7],IR[30:25], IR[11:8], 1'b0};
   else sign_extended_immediate = { {20{imm12[11]}}, imm12 };
 end
 
@@ -122,7 +124,7 @@ enum logic [3:0] {
     S_FETCH = 0, S_DECODE = 1, S_EXECUTE_I = 2, 
     S_EXECUTE_R, S_WRITEBACK, S_MEM_ADDR,
     S_MEM_READ, S_MEM_WRITEBACK, S_MEM_WRITE,
-    S_ERROR = 4'd15
+    S_BRANCH, S_ERROR = 4'd15
 } state;
 
 always_ff @(posedge clk) begin: main_fsm
@@ -143,6 +145,7 @@ always_ff @(posedge clk) begin: main_fsm
         OP_ITYPE: state <= S_EXECUTE_I;
         OP_RTYPE: state <= S_EXECUTE_R;
         OP_LTYPE, OP_STYPE: state <= S_MEM_ADDR;
+        OP_BTYPE: state <= S_BRANCH;
         default: state <= S_ERROR;
       endcase
 
@@ -171,6 +174,11 @@ always_ff @(posedge clk) begin: main_fsm
     end
 
     S_MEM_WRITEBACK: begin
+      state <= S_FETCH;
+      instructions_completed <= instructions_completed + 1;
+    end
+
+    S_BRANCH: begin
       state <= S_FETCH;
       instructions_completed <= instructions_completed + 1;
     end
@@ -380,6 +388,21 @@ always_comb begin : ALU_control_unit
 
       // IR Control
       IR_write = 0;
+    end
+
+    S_BRANCH: begin
+      //ALU Control Unit
+      src_a = regA;
+      src_b = regB;
+      alu_out = alu_result;
+      alu_control = ALU_SUB;
+      
+      case (func3)
+        3'b000: // beq
+          if (zero) PC_ena = 1;
+        3'b001: // bne
+          if (~zero) PC_ena = 1;
+      endcase
     end
 
     default: begin
