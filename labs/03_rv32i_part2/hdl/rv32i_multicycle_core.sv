@@ -35,6 +35,14 @@ register #(.N(32)) PC_OLD_REGISTER(
   .clk(clk), .rst(rst), .ena(PC_ena), .d(PC), .q(PC_old)
 );
 
+// Non-architectural Register: ALU Result
+// Stores the ALU result for future clock cycles.
+wire [31:0] alu_last;
+logic ALU_ena;
+register #(.N(32)) ALU_REGISTER(
+  .clk(clk), .rst(rst), .ena(ALU_ena), .d(alu_result), .q(alu_last)
+);
+
 // Instruction Register
 wire [31:0] IR;
 logic IR_write;
@@ -173,7 +181,7 @@ always_ff @(posedge clk) begin: main_fsm
       state <= S_MEM_WRITEBACK;
     end
 
-    S_MEM_WRITEBACK: begin
+    S_MEM_WRITE, S_MEM_WRITEBACK: begin
       state <= S_FETCH;
       instructions_completed <= instructions_completed + 1;
     end
@@ -203,9 +211,27 @@ alu_behavioural ALU (
 );
 
 // ALU Control Unit
-logic [31:0] alu_out;
+enum logic [1:0] {ALU_SRC_A_PC, ALU_SRC_A_RF, ALU_SRC_A_OLD_PC} alu_src_a;
+enum logic [1:0] {ALU_SRC_B_RF, ALU_SRC_B_IMM, ALU_SRC_B_4} alu_src_b;
 
-always_comb begin : ALU_control_unit
+always_comb begin : ALU_MUX_A
+  case (alu_src_a)
+    ALU_SRC_A_PC: src_a = PC;
+    ALU_SRC_A_RF: src_a = regA;
+    ALU_SRC_A_OLD_PC: src_a = PC_old;
+    default: src_a = 0;
+  endcase 
+end
+always_comb begin : ALU_MUX_B
+  case (alu_src_b)
+    ALU_SRC_B_RF: src_b = regB;
+    ALU_SRC_B_IMM: src_b = sign_extended_immediate;
+    ALU_SRC_B_4: src_b = 32'd4;
+    default: src_b = 0;
+  endcase
+end
+
+always_comb begin : Control_unit
   case (state)
     S_FETCH: begin
       // PC Control Unit
@@ -213,9 +239,10 @@ always_comb begin : ALU_control_unit
       PC_next = alu_result;
 
       //ALU Control Unit
-      src_a = PC;
-      src_b = 32'd4;
+      alu_src_a = ALU_SRC_A_PC;
+      alu_src_b = ALU_SRC_B_4;
       alu_control = ALU_ADD;
+      ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
@@ -228,6 +255,29 @@ always_comb begin : ALU_control_unit
       // IR Control
       IR_write = 1;
     end
+
+    S_DECODE: begin
+      // PC Control Unit
+      PC_ena = 0;
+      PC_next = alu_result;
+
+      //ALU Control Unit
+      alu_src_a = ALU_SRC_A_OLD_PC;
+      alu_src_b = ALU_SRC_B_IMM;
+      alu_control = ALU_ADD;
+      ALU_ena = 1;
+
+      //Memory Control Unit
+      mem_src = MEM_SRC_PC;
+      mem_wr_ena = 0;
+
+      // Register File Control
+      reg_write = 0;
+      rfile_wr_data = last_result;
+
+      // IR Control
+      IR_write = 0;
+    end
     
     S_EXECUTE_I: begin
       // PC Control Unit
@@ -235,10 +285,11 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
 
       //ALU Control Unit
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      last_result = alu_result;
       alu_control = ri_alu_control;
+      ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
@@ -258,10 +309,11 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = regA;
-      src_b = regB;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_RF;
+      last_result = alu_result;
       alu_control = ri_alu_control;
+      ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
@@ -281,9 +333,10 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = 0;
-      src_b = 0;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_RF;
       alu_control = ri_alu_control;
+      ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
@@ -303,10 +356,11 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      last_result = alu_result;
       alu_control = ALU_ADD;
+      ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
@@ -326,10 +380,11 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      last_result = alu_result;
       alu_control = ALU_ADD;
+      ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_RESULT;
@@ -349,10 +404,11 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      last_result = alu_result;
       alu_control = ALU_ADD;
+      ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_RESULT;
@@ -372,14 +428,15 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
       
       //ALU Control Unit
-      src_a = regA;
-      src_b = sign_extended_immediate;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      last_result = alu_result;
       alu_control = ALU_ADD;
+      ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_RESULT;
-      mem_wr_data = regA;
+      mem_wr_data = regB;
       mem_wr_ena = 1;
 
       // Register File Control
@@ -392,16 +449,25 @@ always_comb begin : ALU_control_unit
 
     S_BRANCH: begin
       //ALU Control Unit
-      src_a = regA;
-      src_b = regB;
-      alu_out = alu_result;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_RF;
+      last_result = alu_result;
       alu_control = ALU_SUB;
+      
+      mem_src = MEM_SRC_PC;
+      mem_addr = alu_last;
+      PC_next = alu_last;
+      ALU_ena = 1;
       
       case (func3)
         3'b000: // beq
-          if (zero) PC_ena = 1;
+          if (zero) begin 
+            PC_ena = 1;
+          end
         3'b001: // bne
-          if (~zero) PC_ena = 1;
+          if (~zero) begin
+            PC_ena = 1;
+          end
       endcase
     end
 
@@ -411,8 +477,8 @@ always_comb begin : ALU_control_unit
       PC_next = 0;
 
       //ALU Control Unit  
-      src_a = 0;
-      src_b = 0;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_RF;
       alu_control = ri_alu_control;
 
       //Memory Control Unit
