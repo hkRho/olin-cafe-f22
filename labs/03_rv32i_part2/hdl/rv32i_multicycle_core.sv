@@ -43,6 +43,13 @@ register #(.N(32)) ALU_REGISTER(
   .clk(clk), .rst(rst), .ena(ALU_ena), .d(alu_result), .q(alu_last)
 );
 
+// Non-architectural Register: Memory Data
+logic mem_data_ena;
+wire [31:0] mem_data;
+register #(.N(32)) MEM_DATA_REGISTER(
+  .clk(clk), .rst(rst), .ena(mem_data_ena), .d(mem_rd_data), .q(mem_data)
+);
+
 // Instruction Register
 wire [31:0] IR;
 logic IR_write;
@@ -82,7 +89,7 @@ logic [6:0] func7;
 logic [11:0] imm12;
 logic [19:0] imm20;
 
-logic rtype, ltype, stype, btype;
+logic rtype, ltype, stype, btype, jaltype, jalrtype;
 
 always_comb begin : DECODER
   op = IR[6:0];
@@ -97,6 +104,8 @@ always_comb begin : DECODER
   ltype = (op == OP_LTYPE);
   stype = (op == OP_STYPE);
   btype = (op == OP_BTYPE);
+  jaltype = (op == OP_JAL);
+  jalrtype = (op == OP_JALR);
 
   case (func3)
     3'b000: begin
@@ -123,6 +132,7 @@ logic [31:0] sign_extended_immediate;
 always_comb begin : SIGN_EXTENDER
   if (stype) sign_extended_immediate = {{20{IR[31]}}, IR[31:25],IR[11:7]};
   else if (btype) sign_extended_immediate = {{20{IR[31]}}, IR[7],IR[30:25], IR[11:8], 1'b0};
+  else if (jaltype) sign_extended_immediate = {{12{IR[31]}}, IR[19:12], IR[20], IR[30:21], 1'b0};
   else sign_extended_immediate = { {20{imm12[11]}}, imm12 };
 end
 
@@ -130,9 +140,10 @@ end
 // MAIN FSM
 enum logic [3:0] {
     S_FETCH = 0, S_DECODE = 1, S_EXECUTE_I = 2, 
-    S_EXECUTE_R, S_WRITEBACK, S_MEM_ADDR,
-    S_MEM_READ, S_MEM_WRITEBACK, S_MEM_WRITE,
-    S_BRANCH, S_ERROR = 4'd15
+    S_EXECUTE_R = 3, S_WRITEBACK = 4, S_MEM_ADDR = 5,
+    S_MEM_READ = 6, S_MEM_WRITEBACK = 7, S_MEM_WRITE = 8,
+    S_BRANCH = 9, S_JAL = 10, S_JALR = 11,
+    S_J_WRITEBACK = 12, S_ERROR = 4'd15
 } state;
 
 always_ff @(posedge clk) begin: main_fsm
@@ -154,6 +165,8 @@ always_ff @(posedge clk) begin: main_fsm
         OP_RTYPE: state <= S_EXECUTE_R;
         OP_LTYPE, OP_STYPE: state <= S_MEM_ADDR;
         OP_BTYPE: state <= S_BRANCH;
+        OP_JAL: state <= S_JAL;
+        OP_JALR: state <= S_JALR;
         default: state <= S_ERROR;
       endcase
 
@@ -165,6 +178,19 @@ always_ff @(posedge clk) begin: main_fsm
     S_EXECUTE_I, S_EXECUTE_R: begin
       state <= S_WRITEBACK;
       last_result <= alu_result;
+    end
+
+    S_JAL : begin
+      state <= S_J_WRITEBACK;
+    end
+
+    S_JALR : begin
+      state <= S_J_WRITEBACK;
+    end
+
+    S_J_WRITEBACK : begin
+      state <= S_FETCH;
+      instructions_completed <= instructions_completed + 1;
     end
 
     S_WRITEBACK: begin
@@ -231,26 +257,45 @@ always_comb begin : ALU_MUX_B
   endcase
 end
 
+enum logic [1:0] {RESULT_SRC_ALU, RESULT_SRC_MEM_DATA, RESULT_SRC_ALU_LAST} result_src; 
+// Result Muxing
+always_comb begin: RESULT_MUX
+  case(result_src)
+    RESULT_SRC_ALU: last_result = alu_result;
+    RESULT_SRC_MEM_DATA: last_result = mem_data;
+    RESULT_SRC_ALU_LAST: last_result = alu_last;
+    default: last_result = alu_result;
+  endcase
+end
+
+always_comb begin : RESULT_ALIASES // Worth having separate names for debugging.
+  PC_next = last_result;
+  rfile_wr_data = last_result;
+end
+
+
 always_comb begin : Control_unit
   case (state)
     S_FETCH: begin
       // PC Control Unit
       PC_ena = 1;
-      PC_next = alu_result;
+      //PC_next = alu_result;
 
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_PC;
       alu_src_b = ALU_SRC_B_4;
       alu_control = ALU_ADD;
       ALU_ena = 0;
+      result_src = RESULT_SRC_ALU;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 1;
@@ -259,21 +304,23 @@ always_comb begin : Control_unit
     S_DECODE: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = alu_result;
+      //PC_next = alu_result;
 
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_OLD_PC;
       alu_src_b = ALU_SRC_B_IMM;
       alu_control = ALU_ADD;
       ALU_ena = 1;
+      result_src = RESULT_SRC_ALU;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -282,22 +329,23 @@ always_comb begin : Control_unit
     S_EXECUTE_I: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
 
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_IMM;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU;
       alu_control = ri_alu_control;
       ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -306,22 +354,23 @@ always_comb begin : Control_unit
     S_EXECUTE_R: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_RF;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU;
       alu_control = ri_alu_control;
       ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -330,21 +379,22 @@ always_comb begin : Control_unit
     S_WRITEBACK: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_RF;
-      alu_control = ri_alu_control;
+      result_src = RESULT_SRC_ALU_LAST;
       ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 1;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -353,22 +403,23 @@ always_comb begin : Control_unit
     S_MEM_ADDR: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_IMM;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU;
       alu_control = ALU_ADD;
       ALU_ena = 1;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -377,22 +428,23 @@ always_comb begin : Control_unit
     S_MEM_READ: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_IMM;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU_LAST;
       alu_control = ALU_ADD;
       ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_RESULT;
       mem_wr_ena = 0; // we are reading! not writing
+      mem_data_ena = 1;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;
@@ -401,22 +453,23 @@ always_comb begin : Control_unit
     S_MEM_WRITEBACK: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_IMM;
-      last_result = alu_result;
+      result_src = RESULT_SRC_MEM_DATA;
       alu_control = ALU_ADD;
       ALU_ena = 0;
 
       //Memory Control Unit
       mem_src = MEM_SRC_RESULT;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 1;
-      rfile_wr_data = mem_rd_data;
+      //rfile_wr_data = mem_rd_data;
 
       // IR Control
       IR_write = 0;
@@ -425,12 +478,12 @@ always_comb begin : Control_unit
     S_MEM_WRITE: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
       
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_IMM;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU_LAST;
       alu_control = ALU_ADD;
       ALU_ena = 0;
 
@@ -441,7 +494,7 @@ always_comb begin : Control_unit
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = mem_rd_data;
+      //rfile_wr_data = mem_rd_data;
 
       // IR Control
       IR_write = 0;
@@ -451,13 +504,15 @@ always_comb begin : Control_unit
       //ALU Control Unit
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_RF;
-      last_result = alu_result;
+      result_src = RESULT_SRC_ALU_LAST;
       alu_control = ALU_SUB;
       
       mem_src = MEM_SRC_PC;
       mem_addr = alu_last;
-      PC_next = alu_last;
+      //PC_next = alu_last;
       ALU_ena = 1;
+
+      mem_data_ena = 0;
       
       case (func3)
         3'b000: // beq
@@ -471,23 +526,95 @@ always_comb begin : Control_unit
       endcase
     end
 
+    S_JAL: begin
+      // PC Control Unit
+      PC_ena = 1;
+
+      //ALU Control Unit
+      ALU_ena = 0;
+      alu_src_a = ALU_SRC_A_OLD_PC;
+      alu_src_b = ALU_SRC_B_IMM;
+      alu_control = ALU_ADD;
+      result_src = RESULT_SRC_ALU;
+
+      //Memory Control Unit
+      mem_wr_ena = 0;
+      mem_data_ena = 0;
+      mem_src = MEM_SRC_PC;
+
+      // Register File Control
+      reg_write = 0;
+
+      // IR Control
+      IR_write = 0;
+    end
+
+    S_JALR: begin
+      // PC Control Unit
+      PC_ena = 1;
+      //PC_next = alu_result;
+
+      //ALU Control Unit
+      ALU_ena = 0;
+      alu_src_a = ALU_SRC_A_RF;
+      alu_src_b = ALU_SRC_B_IMM;
+      alu_control = ALU_ADD;
+      result_src = RESULT_SRC_ALU;
+
+      //Memory Control Unit
+      mem_wr_ena = 0;
+      mem_data_ena = 0;
+      mem_src = MEM_SRC_PC;
+
+      // Register File Control
+      reg_write = 0;
+
+      // IR Control
+      IR_write = 0;
+    end
+
+    S_J_WRITEBACK: begin
+      // PC Control Unit
+      PC_ena = 0;
+
+      //ALU Control Unit
+      ALU_ena = 0;
+      alu_src_a = ALU_SRC_A_OLD_PC;
+      alu_src_b = ALU_SRC_B_4;
+      alu_control = ALU_ADD;
+      result_src = RESULT_SRC_ALU;
+
+      //Memory Control Unit
+      mem_wr_ena = 0;
+      mem_data_ena = 0;
+      mem_src = MEM_SRC_PC;
+
+      // Register File Control
+      reg_write = 1;
+
+      // IR Control
+      IR_write = 0;
+    end
+
     default: begin
       // PC Control Unit
       PC_ena = 0;
-      PC_next = 0;
+      //PC_next = 0;
 
       //ALU Control Unit  
       alu_src_a = ALU_SRC_A_RF;
       alu_src_b = ALU_SRC_B_RF;
       alu_control = ri_alu_control;
+      result_src = RESULT_SRC_ALU;
 
       //Memory Control Unit
       mem_src = MEM_SRC_PC;
       mem_wr_ena = 0;
+      mem_data_ena = 0;
 
       // Register File Control
       reg_write = 0;
-      rfile_wr_data = last_result;
+      //rfile_wr_data = last_result;
 
       // IR Control
       IR_write = 0;

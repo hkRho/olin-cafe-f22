@@ -1,11 +1,4 @@
-# ORI DOESN'T WORK
-; addi x1, x0, 1  # x1 = 1
-; addi x2, x1, 2  # x2 = 3
-; xori x3, x0, 3  # x3 = 3 / 011
-; xori x4, x2, 3  # x4 = 0 / 000
-; ori x5, x3, 1   # x5 = 3 / 011
-
-; ; ; # slli WORKS WHEN COMMENTING ori/andi
+# I_TYPES
 ; addi x1, x0, 1      # x1 = 1
 ; addi x2, x1, 2      # x2 = 3
 ; addi x3, x2, 3      # x3 = 6
@@ -21,6 +14,7 @@
 ; slti x10, x2, 4     # x9 = 1
 ; slti x11, x2, 2     # x10 = 0 
 ; sltiu x12, x2, 2    # x11 = 0 
+
 
 # R-TYPES
 ; addi x1, x0, 10
@@ -46,17 +40,44 @@
 ; addi x8, x8, 2
 ; sltu x17, x8, x7     # 011 (3) > 011 (3) = 000 (0)
 
-# L_TYPE
-lw x1, 0(zero)
-addi x2, zero, 5
-addi x3, zero, 8
-addi x6, zero, 5
-lw x4, 4(sp)
-lw x5, -4(gp)
-sw x2, 4(gp)
-beq x2, x6, BEQ_WORKS
-    addi x31, x31, 1 # Should never run! 
-BEQ_WORKS: addi x10, x0, 1
-; addi x1, x0, 10
-; addi x2, x0, 20
-; lw x3, 4(ra)
+
+; # L_TYPE, S_TYPE, B_TYPE
+; lw x1, 0(zero)
+; addi x2, zero, 5
+; addi x3, zero, 8
+; addi x6, zero, 5
+; lw x4, 4(sp)
+; lw x5, -4(gp)
+; sw x2, 4(gp)
+; beq x2, x6, BEQ_WORKS
+;     addi x31, x31, 1 # Should never run! 
+; BEQ_WORKS: addi x10, x0, 1
+;     bne x2, x3, BNE_WORKS
+;     addi x30, x30, 1 # Should never run!
+; BNE_WORKS: addi x15, x0, 1
+
+
+# J_TYPE
+# Note - call = jal ra, LABEL.
+# Note - ret =  jr ra = jalr x0, ra, 0.
+
+# Test sum_4
+addi x3, zero, 1 //4
+addi x4, zero, 2 //8
+addi x5, zero, 3 //12
+addi x6, zero, 4 //20
+call SUM_4 
+
+addi x10, zero, 10
+bne x0, x10, DONE # End the program if the result isn't 10.
+
+# Infinite loop: makes sure we don't accidentally start executing defined functions.
+DONE: beq zero, zero, DONE
+
+# Create a few "leaf" functions - functions that don't call any other functions inside them.
+# return a0 + a1 + a2 + a3 
+SUM_4:
+  add x10, x3, x4 # SUM_4: use temporaries, no need to preserve regs.
+  add x11, x5, x6
+  add x3, x10, x11
+  ret
